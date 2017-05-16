@@ -1,13 +1,18 @@
 <?php
 namespace In2code\Powermail\Controller;
 
+use In2code\Powermail\Domain\Model\Answer;
+use In2code\Powermail\Domain\Model\Field;
+use In2code\Powermail\Domain\Model\Mail;
 use In2code\Powermail\Utility\BackendUtility;
 use In2code\Powermail\Utility\BasicFileUtility;
 use In2code\Powermail\Utility\ConfigurationUtility;
+use In2code\Powermail\Utility\LocalizationUtility;
 use In2code\Powermail\Utility\MailUtility;
 use In2code\Powermail\Utility\ReportingUtility;
 use In2code\Powermail\Utility\StringUtility;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
+use TYPO3\CMS\Extbase\Reflection\ObjectAccess;
 
 /***************************************************************
  *  Copyright notice
@@ -82,21 +87,81 @@ class ModuleController extends AbstractController
      */
     public function exportXlsAction()
     {
-        $this->view->assignMultiple(
-            [
-                'mails' => $this->mailRepository->findAllInPid($this->id, $this->settings, $this->piVars),
-                'fieldUids' => GeneralUtility::trimExplode(
-                    ',',
-                    StringUtility::conditionalVariable($this->piVars['export']['fields'], ''),
-                    true
-                )
-            ]
-        );
+        $fieldUids = GeneralUtility::trimExplode(',', $this->piVars['export']['fields'], true);
+
+        $fields = [];
+        foreach ($this->fieldRepository->findByUids($fieldUids) as $field) {
+            $fields[$field->getUid()] = $field;
+        }
+
+        $mails    = $this->mailRepository->findAllInPid($this->id, $this->settings, $this->piVars);
+        $maxLimit = $mails->getQuery()->count();
+        unset($mails);
 
         $fileName = StringUtility::conditionalVariable($this->settings['export']['filenameXls'], 'export.xls');
         header('Content-Type: application/vnd.ms-excel');
         header('Content-Disposition: inline; filename="' . $fileName . '"');
         header('Pragma: no-cache');
+
+        echo <<<HTML
+<html>
+	<head>
+		<meta http-equiv="content-type" content="text/html; charset=utf-8">
+	</head>
+	<body>
+		<table>
+HTML;
+        echo '<tr>';
+        /** @var Field $field */
+        foreach ($fieldUids as $fieldUid) {
+            if (is_numeric($fieldUid) && isset($fields[$fieldUid])) {
+                $field = $fields[$fieldUid];
+                printf('<th>%s</th>', $field->getTitle());
+            } else {
+                $fieldUidCamel = GeneralUtility::underscoredToLowerCamelCase($fieldUid);
+                printf('<th>%s</th>', LocalizationUtility::translate('\In2code\Powermail\Domain\Model\Mail.' . $fieldUidCamel));
+            }
+        }
+        echo '</tr>';
+
+        $this->piVars['limit'] = 500;
+        for ($i = 0; ($this->piVars['offset'] = $i * $this->piVars['limit']) < $maxLimit; $i++) {
+            $mails = $this->mailRepository->findAllInPid($this->id, $this->settings, $this->piVars);
+
+            if (count($mails)) {
+                /** @var Mail $mail */
+                foreach ($mails as $mail) {
+                    echo '<tr>';
+                    /** @var Answer[] $answers */
+                    $answers = $mail->getAnswersByFieldUid();
+                    foreach ($fieldUids as $fieldUid) {
+                        if (is_numeric($fieldUid) && isset($answers[$fieldUid])) {
+                            $answerValue = $answers[$fieldUid]->getValue();
+                            printf('<td>%s</td>', is_array($answerValue) ? join(', ', $answerValue) : $answerValue);
+                        } else {
+                            if (property_exists($mail, GeneralUtility::underscoredToLowerCamelCase($fieldUid))) {
+                                $value = ObjectAccess::getProperty($mail, GeneralUtility::underscoredToLowerCamelCase($fieldUid));
+                                if ($value instanceof \DateTime) {
+                                    printf('<td>%s</td>', $value->format('Y-m-d H:i:s'));
+                                } elseif (is_array($value)) {
+                                    printf('<td>%s</td>', join(', ', $value));
+                                } else {
+                                    printf('<td>%s</td>', $value);
+                                }
+                            }
+                        }
+                    }
+                    echo '</tr>';
+                }
+            }
+            unset($mails);
+        }
+        echo <<<HTML
+		</table>
+	</body>
+</html>
+HTML;
+        exit();
     }
 
     /**
@@ -106,21 +171,73 @@ class ModuleController extends AbstractController
      */
     public function exportCsvAction()
     {
-        $this->view->assignMultiple(
-            [
-                'mails' => $this->mailRepository->findAllInPid($this->id, $this->settings, $this->piVars),
-                'fieldUids' => GeneralUtility::trimExplode(
-                    ',',
-                    StringUtility::conditionalVariable($this->piVars['export']['fields'], ''),
-                    true
-                )
-            ]
-        );
+        $fieldUids = GeneralUtility::trimExplode(',', $this->piVars['export']['fields'], true);
+
+        $fields = [];
+        foreach ($this->fieldRepository->findByUids($fieldUids) as $field) {
+            $fields[$field->getUid()] = $field;
+        }
+
+        $mails    = $this->mailRepository->findAllInPid($this->id, $this->settings, $this->piVars);
+        $maxLimit = $mails->getQuery()->count();
+        unset($mails);
 
         $fileName = StringUtility::conditionalVariable($this->settings['export']['filenameCsv'], 'export.csv');
         header('Content-Type: text/x-csv');
         header('Content-Disposition: attachment; filename="' . $fileName . '"');
         header('Pragma: no-cache');
+        $output = fopen('php://output', 'w');
+
+        $headers = [];
+        /** @var Field $field */
+        foreach ($fieldUids as $fieldUid) {
+            if (is_numeric($fieldUid) && isset($fields[$fieldUid])) {
+                $field = $fields[$fieldUid];
+                $headers[] = $field->getTitle();
+            } else {
+                $fieldUidCamel = GeneralUtility::underscoredToLowerCamelCase($fieldUid);
+                $headers[] = LocalizationUtility::translate('\In2code\Powermail\Domain\Model\Mail.' . $fieldUidCamel);
+            }
+        }
+
+        fputcsv($output, $headers);
+
+        $this->piVars['limit'] = 500;
+        for ($i = 0; ($this->piVars['offset'] = $i * $this->piVars['limit']) < $maxLimit; $i++) {
+            $mails = $this->mailRepository->findAllInPid($this->id, $this->settings, $this->piVars);
+
+            if (count($mails)) {
+                /** @var Mail $mail */
+                foreach ($mails as $mail) {
+                    $row = [];
+                    /** @var Answer[] $answers */
+                    $answers = $mail->getAnswersByFieldUid();
+                    foreach ($fieldUids as $fieldUid) {
+                        if (is_numeric($fieldUid) && isset($answers[$fieldUid])) {
+                            $answerValue = $answers[$fieldUid]->getValue();
+                            $row[] = (is_array($answerValue) ? join(', ', $answerValue) : $answerValue);
+                        } else {
+                            if (property_exists($mail, GeneralUtility::underscoredToLowerCamelCase($fieldUid))) {
+                                $value = ObjectAccess::getProperty($mail, GeneralUtility::underscoredToLowerCamelCase($fieldUid));
+                                if ($value instanceof \DateTime) {
+                                    $row[] = $value->format('Y-m-d H:i:s');
+                                } elseif (is_array($value)) {
+                                    $row[] = join(', ', $value);
+                                } else {
+                                    $row[] = $value;
+                                }
+                            }
+                        }
+                    }
+
+                    fputcsv($output, $row);
+                }
+            }
+            unset($mails);
+        }
+
+        fclose($output);
+        exit();
     }
 
     /**

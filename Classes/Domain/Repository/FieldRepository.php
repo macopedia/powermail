@@ -46,19 +46,12 @@ class FieldRepository extends AbstractRepository
      * @param array $uids
      * @return QueryResultInterface
      */
-    public function findByUids($uids)
+    public function findByUids(array $uids)
     {
-        $result = [];
-        foreach ($uids as $uid) {
-            $query = $this->createQuery();
-            $query->getQuerySettings()->setRespectStoragePage(false);
-            $query->getQuerySettings()->setRespectSysLanguage(false);
-            $field = $query->matching($query->equals('uid', $uid))->execute()->getFirst();
-            if ($field !== null) {
-                $result[] = $field;
-            }
-        }
-        return $result;
+        $query = $this->createQuery();
+        $query->getQuerySettings()->setRespectStoragePage(false);
+        $query->getQuerySettings()->setRespectSysLanguage(false);
+        return  $query->matching($query->in('uid', $uids))->execute();
     }
 
     /**

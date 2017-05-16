@@ -72,6 +72,8 @@ class MailRepository extends AbstractRepository
     {
         $query = $this->createQuery();
         $query->getQuerySettings()->setIgnoreEnableFields(true);
+        $query->getQuerySettings()->setRespectSysLanguage(false);
+        $query->getQuerySettings()->setLanguageMode(null);
 
         // initial filter
         $and = [
@@ -132,6 +134,12 @@ class MailRepository extends AbstractRepository
         $query->matching($constraint);
 
         $query->setOrderings($this->getSorting($settings['sortby'], $settings['order'], $piVars));
+
+        if (isset($piVars['limit']) && isset($piVars['offset'])) {
+            $query->setLimit($piVars['limit']);
+            $query->setOffset($piVars['offset']);
+        }
+
         return $query->execute();
     }
 
