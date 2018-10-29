@@ -5,7 +5,7 @@ use In2code\Powermail\Signal\SignalTrait;
 use In2code\Powermail\Utility\ConfigurationUtility;
 use In2code\Powermail\Utility\ObjectUtility;
 use In2code\Powermail\Utility\TypoScriptUtility;
-use TYPO3\CMS\Extbase\Service\TypoScriptService;
+use TYPO3\CMS\Core\TypoScript\TypoScriptService;
 
 /***************************************************************
  *  Copyright notice

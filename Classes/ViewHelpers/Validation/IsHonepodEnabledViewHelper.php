@@ -4,7 +4,7 @@ namespace In2code\Powermail\ViewHelpers\Validation;
 use In2code\Powermail\Domain\Validator\SpamShield\HoneyPodMethod;
 use In2code\Powermail\Utility\ConfigurationUtility;
 use In2code\Powermail\Utility\ObjectUtility;
-use TYPO3\CMS\Extbase\Service\TypoScriptService;
+use TYPO3\CMS\Core\TypoScript\TypoScriptService;
 use TYPO3\CMS\Fluid\Core\ViewHelper\AbstractViewHelper;
 use TYPO3\CMS\Extbase\Configuration\ConfigurationManagerInterface;
 
